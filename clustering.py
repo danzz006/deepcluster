@@ -15,6 +15,8 @@ import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
 
+from copy import copy
+
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 __all__ = ['PIC', 'Kmeans', 'cluster_assign', 'arrange_clustering']
@@ -118,6 +120,75 @@ def make_graph(xb, nnn):
     index.add(xb)
     D, I = index.search(xb, nnn + 1)
     return I, D
+
+
+
+def get_majority_pseudolabel(image_indexes, pseudolabels, gt_class_to_list):
+    
+    # list to hold all pseudo labels assigned to different samples of same class
+    pseudolabels_list = []
+    # dict to map gt class to majority pseudo label of that class
+    class_to_majority_label = {}
+
+    max_ = 0
+
+    for class_ in gt_class_to_list:
+        for sample in gt_class_to_list[class_]:
+            pseudolabels_list.append(pseudolabels[image_indexes.index(sample)])
+        
+        for i in pseudolabels_list:
+            tmp_count = pseudolabels_list.count(i)
+            max_ = max_ if pseudolabels_list.count(max_) > tmp_count else i
+
+        class_to_majority_label[class_] = max_
+        pseudolabels_list = []
+        max_ = 0
+
+    return class_to_majority_label
+
+
+def cluster_assign_tracer(images_lists, dataset_lists, dataset):
+    
+    assert images_lists is not None
+    
+    pseudolabels = []
+    image_indexes = []
+    for cluster, images in enumerate(images_lists):
+        image_indexes.extend(images)
+        pseudolabels.extend([cluster] * len(images))
+    
+    # dict to map target labels to list of corressponding images
+    gt_class_to_list = {}
+    
+    # initialize with empty list for each target
+    for i in dataset.targets:
+        gt_class_to_list[i] = []
+    
+    # append image inex to the list by targets 
+    for i in range(len(dataset)):
+        gt_class_to_list[dataset[i][1]].append(i)
+
+    # dict to map gt class to majority pseudo label
+    class_to_majority = get_majority_pseudolabel(image_indexes, pseudolabels, gt_class_to_list)
+
+    # initialize tracer lables with the pseudo labels 
+    tracer_labels = copy(pseudolabels)
+
+    # change pseudo labels to the appropiate class (majority)
+    for class_ in gt_class_to_list:
+        for sample in gt_class_to_list[class_]:
+            tracer_labels[image_indexes.index(sample)] = class_to_majority[class_]   
+
+
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+    t = transforms.Compose([transforms.RandomResizedCrop(224),
+                            transforms.RandomHorizontalFlip(),
+                            transforms.ToTensor(),
+                            normalize])
+
+    return ReassignedDataset(image_indexes, tracer_labels, dataset_lists, t)
+
 
 
 def cluster_assign(images_lists, dataset):

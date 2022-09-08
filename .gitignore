@@ -1,7 +1,11 @@
 **/.*.swp
-*.ipynb
 **/*.pyc
 *.pyc
 .ipynb_checkpoints
 third-parties/
 third-parties/*
+deepcluster_models
+deepcluster_exp
+exp
+exp1
+linear_layer_finetuned_model.pt
